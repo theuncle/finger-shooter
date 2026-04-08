@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hand HUD Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Webcam + Canvas</div>
+          <h1>HTML-in-Canvas Hand HUD</h1>
+          <p class="sub">
+            Prototype para disparar texto con el gesto del pulgar. Usa MediaPipe Hands
+            si hay conexion; si no, se puede disparar con click/space.
+          </p>
+        </div>
+        <div class="status-chip" id="statusChip">Inicializando...</div>
+      </header>
+
+      <section class="deck">
+        <div class="frame" id="frame">
+          <canvas id="view"></canvas>
+          <video id="video" playsinline muted></video>
+
+          <div class="hud top">
+            <div class="hud-left">
+              <span class="pill">//</span>
+              <span class="hud-text">HTML-in-canvas API is...</span>
+            </div>
+            <div class="hud-center">
+              <span class="hud-label">fun?</span>
+              <input id="funSlider" type="range" min="40" max="140" value="100" />
+              <span class="hud-value" id="funValue">100%</span>
+            </div>
+            <div class="hud-right">[ bend thumb to fire ]</div>
+          </div>
+
+          <div class="hud bottom">
+            <div class="hud-left" id="handStatus">READY · HAND: --</div>
+            <div class="hud-center">LOCKED · SHOTS: <span id="shotCount">0</span></div>
+            <div class="hud-right" id="fps">FPS: --</div>
+          </div>
+        </div>
+
+        <aside class="control-panel">
+          <div class="panel-title">Control Rack</div>
+          <div class="control">
+            <label for="burst">Burst</label>
+            <input id="burst" type="range" min="4" max="16" value="10" />
+            <span id="burstValue">10</span>
+          </div>
+          <div class="control">
+            <label for="gravity">Gravity</label>
+            <input id="gravity" type="range" min="2" max="16" value="8" />
+            <span id="gravityValue">8</span>
+          </div>
+          <div class="control">
+            <label for="trail">Trail</label>
+            <input id="trail" type="range" min="0" max="90" value="35" />
+            <span id="trailValue">35</span>
+          </div>
+          <div class="buttons">
+            <button id="toggleWebcam" class="btn">Toggle Webcam</button>
+            <button id="clear" class="btn ghost">Clear FX</button>
+          </div>
+          <div class="hint">
+            Disparo manual: click o tecla espacio. Con MediaPipe, pellizca pulgar + indice.
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
