@@ -3,36 +3,70 @@
 
   const canvas = document.getElementById("view");
   const video = document.getElementById("video");
+  const frame = document.getElementById("frame");
   const ctx = canvas.getContext("2d");
 
   const scoreEl = document.getElementById("score");
   const livesEl = document.getElementById("lives");
   const shotsEl = document.getElementById("shots");
   const fpsEl = document.getElementById("fps");
+  const levelEl = document.getElementById("level");
   const statusEl = document.getElementById("status");
   const hintEl = document.getElementById("hint");
+
+  const overlay = document.getElementById("overlay");
+  const overlayTitle = document.getElementById("overlayTitle");
+  const overlayBody = document.getElementById("overlayBody");
+  const overlayHint = document.getElementById("overlayHint");
 
   const startBtn = document.getElementById("start");
   const handBtn = document.getElementById("hand");
   const resetBtn = document.getElementById("reset");
 
-  const state = {
-    running: false,
-    score: 0,
-    lives: 3,
-    shots: 0,
-    pointer: { x: 0.5, y: 0.5 },
-    pointerSmooth: { x: 0.5, y: 0.5 },
-    spawnTimer: 0,
-    spawnInterval: 1200,
-    cooldown: 0,
-    lastTime: performance.now(),
-    usingHand: false,
-    pinchDown: false,
-  };
-
-  const targets = [];
-  const bursts = [];
+  const levels = [
+    {
+      name: "Mesa Dawn",
+      skyTop: "#5d3b25",
+      skyMid: "#c98a52",
+      skyBottom: "#3b2b21",
+      sun: "rgba(255, 214, 114, 0.35)",
+      mountains: "#533725",
+      ground: "#6b4a34",
+      cabin: "#3d2a20",
+      spawnInterval: 1200,
+      lifeMin: 1800,
+      lifeMax: 2600,
+      goal: 8,
+    },
+    {
+      name: "Canyon Heat",
+      skyTop: "#2c3e57",
+      skyMid: "#b05c3a",
+      skyBottom: "#1d1f2a",
+      sun: "rgba(255, 160, 90, 0.4)",
+      mountains: "#3c2b2e",
+      ground: "#5b392d",
+      cabin: "#2e1f1a",
+      spawnInterval: 950,
+      lifeMin: 1500,
+      lifeMax: 2200,
+      goal: 12,
+    },
+    {
+      name: "Neon Dusk",
+      skyTop: "#2f1f4d",
+      skyMid: "#6840a8",
+      skyBottom: "#20152f",
+      sun: "rgba(100, 220, 240, 0.3)",
+      mountains: "#2c2344",
+      ground: "#3c2f4d",
+      cabin: "#24182a",
+      spawnInterval: 760,
+      lifeMin: 1200,
+      lifeMax: 1900,
+      goal: 16,
+    },
+  ];
 
   const bandits = [
     { name: "El Rojo", color: "#ff5c36", points: 120 },
@@ -40,9 +74,31 @@
     { name: "La Sombra", color: "#33d0b0", points: 150 },
   ];
 
+  const state = {
+    screen: "intro",
+    running: false,
+    score: 0,
+    lives: 3,
+    shots: 0,
+    pointer: { x: 0.5, y: 0.5 },
+    pointerSmooth: { x: 0.5, y: 0.5 },
+    spawnTimer: 0,
+    spawnInterval: levels[0].spawnInterval,
+    cooldown: 0,
+    lastTime: performance.now(),
+    usingHand: false,
+    pinchDown: false,
+    levelIndex: 0,
+    levelHits: 0,
+  };
+
+  const targets = [];
+  const bursts = [];
+
   let hands = null;
   let camera = null;
   let fps = 0;
+  let audioCtx = null;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -60,14 +116,112 @@
     return min + Math.random() * (max - min);
   }
 
+  function unlockAudio() {
+    if (audioCtx) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+  }
+
+  function playTone(freq, duration, type, gain) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const amp = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    amp.gain.value = gain;
+    osc.connect(amp);
+    amp.connect(audioCtx.destination);
+    osc.start();
+    amp.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+    osc.stop(audioCtx.currentTime + duration + 0.02);
+  }
+
+  function playSound(kind) {
+    unlockAudio();
+    if (!audioCtx) return;
+    if (kind === "shot") playTone(220, 0.12, "square", 0.15);
+    if (kind === "hit") playTone(680, 0.15, "triangle", 0.2);
+    if (kind === "miss") playTone(140, 0.2, "sawtooth", 0.12);
+    if (kind === "level") {
+      playTone(440, 0.18, "triangle", 0.2);
+      setTimeout(() => playTone(660, 0.18, "triangle", 0.2), 120);
+    }
+    if (kind === "gameover") {
+      playTone(260, 0.25, "sawtooth", 0.18);
+      setTimeout(() => playTone(180, 0.25, "sawtooth", 0.18), 160);
+      setTimeout(() => playTone(120, 0.25, "sawtooth", 0.18), 320);
+    }
+    if (kind === "victory") {
+      playTone(520, 0.2, "triangle", 0.22);
+      setTimeout(() => playTone(660, 0.2, "triangle", 0.22), 140);
+      setTimeout(() => playTone(780, 0.25, "triangle", 0.22), 300);
+    }
+  }
+
   function updateHud() {
     scoreEl.textContent = state.score.toString().padStart(6, "0");
     livesEl.textContent = state.lives.toString().padStart(2, "0");
     shotsEl.textContent = state.shots.toString().padStart(3, "0");
+    levelEl.textContent = (state.levelIndex + 1).toString().padStart(2, "0");
   }
 
   function setStatus(text) {
     statusEl.textContent = text;
+  }
+
+  function setOverlay(title, body, hint) {
+    overlayTitle.textContent = title;
+    overlayBody.textContent = body;
+    overlayHint.textContent = hint;
+    overlay.classList.remove("hidden");
+  }
+
+  function hideOverlay() {
+    overlay.classList.add("hidden");
+  }
+
+  function levelConfig() {
+    return levels[state.levelIndex];
+  }
+
+  function startLevel(index) {
+    state.levelIndex = index;
+    state.levelHits = 0;
+    state.spawnTimer = 0;
+    state.spawnInterval = levels[index].spawnInterval;
+    targets.length = 0;
+    bursts.length = 0;
+    state.running = true;
+    state.screen = "playing";
+    hideOverlay();
+    hintEl.textContent = "Bandoleros a la vista. No dejes que escapen.";
+    updateHud();
+    playSound("level");
+  }
+
+  function endLevel() {
+    state.running = false;
+    state.screen = "intermission";
+    setOverlay(
+      "Nivel completado",
+      `Has completado ${levels[state.levelIndex].name}`,
+      "Pulsa cualquier tecla para continuar"
+    );
+  }
+
+  function winGame() {
+    state.running = false;
+    state.screen = "victory";
+    setOverlay("Victoria", "El desierto es tuyo", "Pulsa cualquier tecla para reiniciar");
+    playSound("victory");
+  }
+
+  function gameOver() {
+    state.running = false;
+    state.screen = "gameover";
+    setOverlay("Game Over", "Los bandoleros ganan", "Pulsa cualquier tecla para reintentar");
+    playSound("gameover");
   }
 
   function spawnTarget() {
@@ -78,6 +232,7 @@
     const ground = canvas.clientHeight * 0.72;
     const y = depth === 0 ? rand(horizon + 30, ground - 40) : rand(horizon - 10, horizon + 60);
     const x = rand(120, canvas.clientWidth - 120);
+    const level = levelConfig();
 
     targets.push({
       id: Math.random().toString(16).slice(2),
@@ -87,8 +242,13 @@
       scale,
       depth,
       born: performance.now(),
-      life: rand(1600, 2600),
+      life: rand(level.lifeMin, level.lifeMax),
       sway: rand(-0.5, 0.5),
+      hit: false,
+      hitTime: 0,
+      rot: 0,
+      fall: rand(1.2, 2.2),
+      alpha: 1,
     });
   }
 
@@ -96,19 +256,26 @@
     targets.splice(idx, 1);
     if (escaped) {
       state.lives = Math.max(0, state.lives - 1);
+      updateHud();
       if (state.lives === 0) {
-        state.running = false;
-        hintEl.textContent = "Game Over. Pulsa Start para reintentar.";
+        gameOver();
       }
     }
   }
 
+  function markHit(target) {
+    target.hit = true;
+    target.hitTime = performance.now();
+  }
+
   function shoot() {
-    if (!state.running) return;
+    if (state.screen !== "playing") return;
     if (state.cooldown > 0) return;
 
     state.cooldown = 220;
     state.shots += 1;
+    updateHud();
+    playSound("shot");
 
     const px = state.pointerSmooth.x * canvas.clientWidth;
     const py = state.pointerSmooth.y * canvas.clientHeight;
@@ -116,6 +283,7 @@
     let hitIndex = -1;
     for (let i = targets.length - 1; i >= 0; i -= 1) {
       const t = targets[i];
+      if (t.hit) continue;
       const size = 42 * t.scale;
       const hit =
         px > t.x - size &&
@@ -125,37 +293,45 @@
       if (hit) {
         hitIndex = i;
         state.score += t.type.points;
+        state.levelHits += 1;
         bursts.push({ x: px, y: py, life: 0 });
+        markHit(t);
+        playSound("hit");
         break;
       }
     }
 
-    if (hitIndex >= 0) {
-      targets.splice(hitIndex, 1);
-    } else {
+    if (hitIndex < 0) {
       bursts.push({ x: px, y: py, life: 0, miss: true });
+      playSound("miss");
     }
 
-    updateHud();
+    if (state.levelHits >= levelConfig().goal) {
+      if (state.levelIndex === levels.length - 1) {
+        winGame();
+      } else {
+        endLevel();
+      }
+    }
   }
 
-  function drawBackground() {
+  function drawBackground(level) {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
 
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, "#5e3d2a");
-    sky.addColorStop(0.4, "#c98a52");
-    sky.addColorStop(1, "#3b2b21");
+    sky.addColorStop(0, level.skyTop);
+    sky.addColorStop(0.4, level.skyMid);
+    sky.addColorStop(1, level.skyBottom);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.fillStyle = "rgba(255, 214, 114, 0.35)";
+    ctx.fillStyle = level.sun;
     ctx.beginPath();
     ctx.arc(w * 0.76, h * 0.18, h * 0.12, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#533725";
+    ctx.fillStyle = level.mountains;
     ctx.beginPath();
     ctx.moveTo(0, h * 0.5);
     ctx.lineTo(w * 0.2, h * 0.36);
@@ -168,7 +344,7 @@
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#6b4a34";
+    ctx.fillStyle = level.ground;
     ctx.beginPath();
     ctx.moveTo(0, h * 0.62);
     ctx.lineTo(w * 0.16, h * 0.58);
@@ -181,9 +357,9 @@
     ctx.closePath();
     ctx.fill();
 
-    drawCabin(w * 0.18, h * 0.62, 1.1);
-    drawCabin(w * 0.72, h * 0.6, 1.2);
-    drawCabin(w * 0.45, h * 0.65, 0.9);
+    drawCabin(w * 0.18, h * 0.62, 1.1, level.cabin);
+    drawCabin(w * 0.72, h * 0.6, 1.2, level.cabin);
+    drawCabin(w * 0.45, h * 0.65, 0.9, level.cabin);
 
     ctx.fillStyle = "rgba(0,0,0,0.2)";
     for (let i = 0; i < 40; i += 1) {
@@ -191,11 +367,11 @@
     }
   }
 
-  function drawCabin(x, y, scale) {
+  function drawCabin(x, y, scale, color) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
-    ctx.fillStyle = "#3d2a20";
+    ctx.fillStyle = color;
     ctx.fillRect(-40, -30, 80, 40);
     ctx.fillStyle = "#2a1c15";
     ctx.fillRect(-18, -10, 20, 20);
@@ -210,10 +386,12 @@
   }
 
   function drawBandit(t) {
-    const { x, y, scale, type } = t;
+    const { x, y, scale, type, hit, rot, alpha } = t;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
+    ctx.rotate(rot);
+    ctx.globalAlpha = alpha;
 
     ctx.fillStyle = "rgba(0,0,0,0.25)";
     ctx.beginPath();
@@ -245,6 +423,14 @@
     ctx.moveTo(2, -6);
     ctx.lineTo(6, -6);
     ctx.stroke();
+
+    if (hit) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.beginPath();
+      ctx.moveTo(-18, -6);
+      ctx.lineTo(18, 16);
+      ctx.stroke();
+    }
 
     ctx.restore();
   }
@@ -288,9 +474,19 @@
     for (let i = targets.length - 1; i >= 0; i -= 1) {
       const t = targets[i];
       const age = performance.now() - t.born;
-      t.x += Math.sin((age / 400) + t.sway) * 0.2;
-      if (age > t.life) {
-        removeTarget(i, true);
+      if (!t.hit) {
+        t.x += Math.sin((age / 400) + t.sway) * 0.2;
+        if (age > t.life) {
+          removeTarget(i, true);
+        }
+      } else {
+        const elapsed = performance.now() - t.hitTime;
+        t.rot += 0.08;
+        t.y += t.fall;
+        t.alpha = Math.max(0, 1 - elapsed / 520);
+        if (elapsed > 600) {
+          targets.splice(i, 1);
+        }
       }
     }
   }
@@ -309,7 +505,7 @@
     fpsEl.textContent = fps.toFixed(0);
 
     ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-    drawBackground();
+    drawBackground(levelConfig());
 
     if (state.running) {
       state.spawnTimer += dt;
@@ -340,22 +536,27 @@
     state.lives = 3;
     state.shots = 0;
     state.spawnTimer = 0;
+    state.levelIndex = 0;
+    state.levelHits = 0;
     targets.length = 0;
     bursts.length = 0;
     updateHud();
+    setOverlay("Finger Shooter", "Pulsa cualquier tecla para empezar", "SPACE tambien dispara");
+    state.screen = "intro";
     hintEl.textContent = "Click o barra espaciadora para disparar. Pulsa Hand para activar el dedo.";
   }
 
-  function startGame() {
-    if (state.running) return;
-    if (state.lives === 0) {
-      state.lives = 3;
+  function handleStartAction() {
+    if (state.screen === "intro" || state.screen === "gameover" || state.screen === "victory") {
       state.score = 0;
+      state.lives = 3;
       state.shots = 0;
+      startLevel(0);
+      return;
     }
-    state.running = true;
-    hintEl.textContent = "Bandoleros a la vista. No dejes que escapen.";
-    updateHud();
+    if (state.screen === "intermission") {
+      startLevel(state.levelIndex + 1);
+    }
   }
 
   function handlePointer(e) {
@@ -386,7 +587,7 @@
     }
 
     hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
 
     hands.setOptions({
@@ -445,12 +646,34 @@
   }
 
   canvas.addEventListener("mousemove", handlePointer);
-  canvas.addEventListener("click", shoot);
-  window.addEventListener("keydown", (e) => {
-    if (e.code === "Space") shoot();
+  canvas.addEventListener("click", () => {
+    if (state.screen === "playing") {
+      shoot();
+    } else {
+      handleStartAction();
+    }
   });
 
-  startBtn.addEventListener("click", startGame);
+  frame.addEventListener("click", () => {
+    if (state.screen !== "playing") {
+      handleStartAction();
+    }
+  });
+
+  window.addEventListener("keydown", (e) => {
+    unlockAudio();
+    if (state.screen === "playing") {
+      if (e.code === "Space") shoot();
+      return;
+    }
+    handleStartAction();
+  });
+
+  startBtn.addEventListener("click", () => {
+    unlockAudio();
+    handleStartAction();
+  });
+
   resetBtn.addEventListener("click", resetGame);
   handBtn.addEventListener("click", async () => {
     if (state.usingHand) {
