@@ -24,9 +24,17 @@
       </header>
 
       <section class="playfield">
-        <div class="frame">
+        <div class="frame" id="frame">
           <canvas id="view"></canvas>
           <video id="video" playsinline muted></video>
+
+          <div class="overlay" id="overlay">
+            <div class="overlay-card">
+              <div class="overlay-title" id="overlayTitle">Finger Shooter</div>
+              <div class="overlay-body" id="overlayBody">Pulsa cualquier tecla para empezar</div>
+              <div class="overlay-hint" id="overlayHint">SPACE tambien dispara</div>
+            </div>
+          </div>
 
           <div class="hud hud-top">
             <div class="hud-block">
@@ -36,6 +44,10 @@
             <div class="hud-block">
               <span class="label">LIVES</span>
               <span id="lives" class="value">03</span>
+            </div>
+            <div class="hud-block">
+              <span class="label">LEVEL</span>
+              <span id="level" class="value">01</span>
             </div>
             <div class="hud-block">
               <span class="label">SHOTS</span>
