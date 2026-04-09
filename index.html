@@ -1,79 +1,77 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hand HUD Prototype</title>
+    <title>Visionfinger - Desert Bandits</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="stage">
-      <header class="hero">
+    <main class="arcade">
+      <header class="topbar">
         <div>
-          <div class="eyebrow">Webcam + Canvas</div>
-          <h1>HTML-in-Canvas Hand HUD</h1>
-          <p class="sub">
-            Prototype para disparar texto con el gesto del pulgar. Usa MediaPipe Hands
-            si hay conexion; si no, se puede disparar con click/space.
-          </p>
+          <div class="tag">VISIONFINGER · ARCADE WEST</div>
+          <h1>Desert Bandits</h1>
+          <p class="subtitle">Apunta con el dedo y derriba a los bandoleros.</p>
         </div>
-        <div class="status-chip" id="statusChip">Inicializando...</div>
+        <div class="status" id="status">Modo raton activo</div>
       </header>
 
-      <section class="deck">
-        <div class="frame" id="frame">
+      <section class="playfield">
+        <div class="frame">
           <canvas id="view"></canvas>
           <video id="video" playsinline muted></video>
 
-          <div class="hud top">
-            <div class="hud-left">
-              <span class="pill">//</span>
-              <span class="hud-text">HTML-in-canvas API is...</span>
+          <div class="hud hud-top">
+            <div class="hud-block">
+              <span class="label">SCORE</span>
+              <span id="score" class="value">000000</span>
             </div>
-            <div class="hud-center">
-              <span class="hud-label">fun?</span>
-              <input id="funSlider" type="range" min="40" max="140" value="100" />
-              <span class="hud-value" id="funValue">100%</span>
+            <div class="hud-block">
+              <span class="label">LIVES</span>
+              <span id="lives" class="value">03</span>
             </div>
-            <div class="hud-right">[ bend thumb to fire ]</div>
+            <div class="hud-block">
+              <span class="label">SHOTS</span>
+              <span id="shots" class="value">000</span>
+            </div>
+            <div class="hud-block">
+              <span class="label">FPS</span>
+              <span id="fps" class="value">--</span>
+            </div>
           </div>
 
-          <div class="hud bottom">
-            <div class="hud-left" id="handStatus">READY · HAND: --</div>
-            <div class="hud-center">LOCKED · SHOTS: <span id="shotCount">0</span></div>
-            <div class="hud-right" id="fps">FPS: --</div>
+          <div class="hud hud-bottom">
+            <div class="hint" id="hint">Click o barra espaciadora para disparar. Pulsa Hand para activar el dedo.</div>
+            <div class="controls">
+              <button id="start" class="btn">Start</button>
+              <button id="hand" class="btn ghost">Hand</button>
+              <button id="reset" class="btn ghost">Reset</button>
+            </div>
           </div>
         </div>
 
-        <aside class="control-panel">
-          <div class="panel-title">Control Rack</div>
-          <div class="control">
-            <label for="burst">Burst</label>
-            <input id="burst" type="range" min="4" max="16" value="10" />
-            <span id="burstValue">10</span>
+        <aside class="side">
+          <div class="card">
+            <div class="card-title">Bandoleros</div>
+            <ul class="legend">
+              <li><span class="dot red"></span> El Rojo · 120 pts</li>
+              <li><span class="dot amber"></span> El Polvo · 90 pts</li>
+              <li><span class="dot teal"></span> La Sombra · 150 pts</li>
+            </ul>
           </div>
-          <div class="control">
-            <label for="gravity">Gravity</label>
-            <input id="gravity" type="range" min="2" max="16" value="8" />
-            <span id="gravityValue">8</span>
-          </div>
-          <div class="control">
-            <label for="trail">Trail</label>
-            <input id="trail" type="range" min="0" max="90" value="35" />
-            <span id="trailValue">35</span>
-          </div>
-          <div class="buttons">
-            <button id="toggleWebcam" class="btn">Toggle Webcam</button>
-            <button id="clear" class="btn ghost">Clear FX</button>
-          </div>
-          <div class="hint">
-            Disparo manual: click o tecla espacio. Con MediaPipe, pellizca pulgar + indice.
+          <div class="card">
+            <div class="card-title">Reglas</div>
+            <p>
+              Si un bandolero se escapa pierdes una vida. Sin webcam se usa raton, con
+              webcam apunta con el indice y pellizca para disparar. No mostramos tu imagen.
+            </p>
           </div>
         </aside>
       </section>
