@@ -35,11 +35,10 @@
       mountains: "#533725",
       ground: "#6b4a34",
       cabin: "#3d2a20",
-      spawnInterval: 1200,
-      lifeMin: 1800,
-      lifeMax: 2600,
+      spawnInterval: 1700,
       goal: 8,
-      wind: 0.25,
+      wind: 0.18,
+      approachSpeed: 0.00018,
     },
     {
       name: "Canyon Heat",
@@ -50,11 +49,10 @@
       mountains: "#3c2b2e",
       ground: "#5b392d",
       cabin: "#2e1f1a",
-      spawnInterval: 950,
-      lifeMin: 1500,
-      lifeMax: 2200,
+      spawnInterval: 1300,
       goal: 12,
-      wind: 0.4,
+      wind: 0.28,
+      approachSpeed: 0.00024,
     },
     {
       name: "Neon Dusk",
@@ -65,11 +63,10 @@
       mountains: "#2c2344",
       ground: "#3c2f4d",
       cabin: "#24182a",
-      spawnInterval: 760,
-      lifeMin: 1200,
-      lifeMax: 1900,
+      spawnInterval: 1100,
       goal: 16,
-      wind: 0.55,
+      wind: 0.36,
+      approachSpeed: 0.0003,
     },
   ];
 
@@ -103,6 +100,7 @@
   const targets = [];
   const bursts = [];
   const spawnQueue = [];
+  const maxTargets = 5;
 
   let hands = null;
   let camera = null;
@@ -298,24 +296,32 @@
 
   function spawnTarget(pattern) {
     const type = bandits[Math.floor(Math.random() * bandits.length)];
-    const depth = Math.random() < 0.55 ? 0 : 1;
-    const scale = (depth === 0 ? 1 : 0.75) * type.size;
+    const depth = Math.random() < 0.6 ? 0 : 1;
     const horizon = canvas.clientHeight * 0.48;
     const ground = canvas.clientHeight * 0.72;
-    const y = depth === 0 ? rand(horizon + 30, ground - 40) : rand(horizon - 10, horizon + 60);
+    const startY =
+      depth === 0 ? rand(horizon - 10, horizon + 40) : rand(horizon - 30, horizon + 20);
+    const endY = depth === 0 ? rand(ground - 55, ground - 10) : rand(ground - 85, ground - 30);
     const x = rand(120, canvas.clientWidth - 120);
     const level = levelConfig();
     const drift = (Math.random() - 0.5) * level.wind;
+    const startScale = depth === 0 ? rand(0.55, 0.7) : rand(0.45, 0.6);
+    const endScale = depth === 0 ? rand(1.05, 1.25) : rand(0.85, 1.05);
+    const speed = level.approachSpeed * rand(0.85, 1.15);
 
     targets.push({
       id: Math.random().toString(16).slice(2),
       type,
       x,
-      y,
-      scale,
+      y: startY,
+      scale: startScale * type.size,
       depth,
-      born: performance.now(),
-      life: rand(level.lifeMin, level.lifeMax),
+      startY,
+      endY,
+      startScale,
+      endScale,
+      progress: 0,
+      speed,
       sway: rand(-0.5, 0.5),
       hit: false,
       hitTime: 0,
@@ -328,7 +334,8 @@
   }
 
   function queuePattern() {
-    const patterns = ["solo", "double", "line", "zigzag", "rush"];
+    if (targets.length + spawnQueue.length >= maxTargets) return;
+    const patterns = ["solo", "double", "line"];
     const pick = patterns[Math.floor(Math.random() * patterns.length)];
 
     if (pick === "solo") {
@@ -337,24 +344,12 @@
 
     if (pick === "double") {
       spawnQueue.push({ delay: 0, pattern: "double" });
-      spawnQueue.push({ delay: 180, pattern: "double" });
+      spawnQueue.push({ delay: 280, pattern: "double" });
     }
 
     if (pick === "line") {
       for (let i = 0; i < 3; i += 1) {
-        spawnQueue.push({ delay: i * 160, pattern: "line" });
-      }
-    }
-
-    if (pick === "zigzag") {
-      for (let i = 0; i < 2; i += 1) {
-        spawnQueue.push({ delay: i * 220, pattern: "zigzag" });
-      }
-    }
-
-    if (pick === "rush") {
-      for (let i = 0; i < 5; i += 1) {
-        spawnQueue.push({ delay: i * 120, pattern: "rush" });
+        spawnQueue.push({ delay: i * 220, pattern: "line" });
       }
     }
   }
@@ -590,11 +585,13 @@
   function updateTargets(dt) {
     for (let i = targets.length - 1; i >= 0; i -= 1) {
       const t = targets[i];
-      const age = performance.now() - t.born;
       if (!t.hit) {
-        t.x += Math.sin((age / 400) + t.sway) * 0.2 + t.vx;
+        t.progress = Math.min(1, t.progress + t.speed * dt);
+        t.x += Math.sin((t.progress * 6) + t.sway) * 0.2 + t.vx;
         t.x = Math.max(60, Math.min(canvas.clientWidth - 60, t.x));
-        if (age > t.life) {
+        t.y = lerp(t.startY, t.endY, t.progress);
+        t.scale = lerp(t.startScale, t.endScale, t.progress) * t.type.size;
+        if (t.progress >= 1) {
           removeTarget(i, true);
         }
       } else {
