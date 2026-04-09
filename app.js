@@ -13,6 +13,7 @@
   const levelEl = document.getElementById("level");
   const statusEl = document.getElementById("status");
   const hintEl = document.getElementById("hint");
+  const scoreboardEl = document.getElementById("scoreboard");
 
   const overlay = document.getElementById("overlay");
   const overlayTitle = document.getElementById("overlayTitle");
@@ -20,6 +21,7 @@
   const overlayHint = document.getElementById("overlayHint");
 
   const startBtn = document.getElementById("start");
+  const musicBtn = document.getElementById("music");
   const handBtn = document.getElementById("hand");
   const resetBtn = document.getElementById("reset");
 
@@ -37,6 +39,7 @@
       lifeMin: 1800,
       lifeMax: 2600,
       goal: 8,
+      wind: 0.25,
     },
     {
       name: "Canyon Heat",
@@ -51,6 +54,7 @@
       lifeMin: 1500,
       lifeMax: 2200,
       goal: 12,
+      wind: 0.4,
     },
     {
       name: "Neon Dusk",
@@ -65,13 +69,16 @@
       lifeMin: 1200,
       lifeMax: 1900,
       goal: 16,
+      wind: 0.55,
     },
   ];
 
   const bandits = [
-    { name: "El Rojo", color: "#ff5c36", points: 120 },
-    { name: "El Polvo", color: "#f9b35d", points: 90 },
-    { name: "La Sombra", color: "#33d0b0", points: 150 },
+    { name: "El Rojo", color: "#ff5c36", points: 120, size: 1 },
+    { name: "El Polvo", color: "#f9b35d", points: 90, size: 0.9 },
+    { name: "La Sombra", color: "#33d0b0", points: 150, size: 1 },
+    { name: "Dama Veloz", color: "#a167ff", points: 180, size: 0.85 },
+    { name: "Forastero", color: "#3aa8ff", points: 70, size: 1.15 },
   ];
 
   const state = {
@@ -90,15 +97,20 @@
     pinchDown: false,
     levelIndex: 0,
     levelHits: 0,
+    musicOn: false,
   };
 
   const targets = [];
   const bursts = [];
+  const spawnQueue = [];
 
   let hands = null;
   let camera = null;
   let fps = 0;
   let audioCtx = null;
+  let musicTimer = null;
+
+  const scoreKey = "finger-shooter-scores";
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -159,6 +171,63 @@
     }
   }
 
+  function scheduleMusic() {
+    if (!audioCtx || !state.musicOn) return;
+    const base = 220;
+    const melody = [0, 3, 5, 7, 3, 0, 5, 7, 10, 7, 5, 3];
+    let step = 0;
+    clearInterval(musicTimer);
+    musicTimer = setInterval(() => {
+      if (!state.musicOn || !audioCtx) return;
+      const freq = base * Math.pow(2, melody[step % melody.length] / 12);
+      playTone(freq, 0.18, "triangle", 0.08);
+      step += 1;
+    }, 220);
+  }
+
+  function toggleMusic() {
+    unlockAudio();
+    state.musicOn = !state.musicOn;
+    if (state.musicOn) {
+      scheduleMusic();
+      musicBtn.textContent = "Music On";
+    } else {
+      clearInterval(musicTimer);
+      musicBtn.textContent = "Music Off";
+    }
+  }
+
+  function getScores() {
+    const raw = window.localStorage.getItem(scoreKey);
+    if (!raw) return [0, 0, 0, 0, 0];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      return [0, 0, 0, 0, 0];
+    } catch {
+      return [0, 0, 0, 0, 0];
+    }
+  }
+
+  function saveScore(value) {
+    const scores = getScores();
+    scores.push(value);
+    scores.sort((a, b) => b - a);
+    const top = scores.slice(0, 5);
+    window.localStorage.setItem(scoreKey, JSON.stringify(top));
+    renderScores(top);
+  }
+
+  function renderScores(scores) {
+    const list = scores || getScores();
+    scoreboardEl.innerHTML = "";
+    list.forEach((score) => {
+      const li = document.createElement("li");
+      li.textContent = score.toString().padStart(6, "0");
+      scoreboardEl.appendChild(li);
+    });
+  }
+
   function updateHud() {
     scoreEl.textContent = state.score.toString().padStart(6, "0");
     livesEl.textContent = state.lives.toString().padStart(2, "0");
@@ -192,6 +261,7 @@
     state.spawnInterval = levels[index].spawnInterval;
     targets.length = 0;
     bursts.length = 0;
+    spawnQueue.length = 0;
     state.running = true;
     state.screen = "playing";
     hideOverlay();
@@ -205,7 +275,7 @@
     state.screen = "intermission";
     setOverlay(
       "Nivel completado",
-      `Has completado ${levels[state.levelIndex].name}`,
+      `Preparado para ${levels[state.levelIndex + 1].name}`,
       "Pulsa cualquier tecla para continuar"
     );
   }
@@ -215,6 +285,7 @@
     state.screen = "victory";
     setOverlay("Victoria", "El desierto es tuyo", "Pulsa cualquier tecla para reiniciar");
     playSound("victory");
+    saveScore(state.score);
   }
 
   function gameOver() {
@@ -222,17 +293,19 @@
     state.screen = "gameover";
     setOverlay("Game Over", "Los bandoleros ganan", "Pulsa cualquier tecla para reintentar");
     playSound("gameover");
+    saveScore(state.score);
   }
 
-  function spawnTarget() {
+  function spawnTarget(pattern) {
     const type = bandits[Math.floor(Math.random() * bandits.length)];
     const depth = Math.random() < 0.55 ? 0 : 1;
-    const scale = depth === 0 ? 1 : 0.75;
+    const scale = (depth === 0 ? 1 : 0.75) * type.size;
     const horizon = canvas.clientHeight * 0.48;
     const ground = canvas.clientHeight * 0.72;
     const y = depth === 0 ? rand(horizon + 30, ground - 40) : rand(horizon - 10, horizon + 60);
     const x = rand(120, canvas.clientWidth - 120);
     const level = levelConfig();
+    const drift = (Math.random() - 0.5) * level.wind;
 
     targets.push({
       id: Math.random().toString(16).slice(2),
@@ -249,7 +322,51 @@
       rot: 0,
       fall: rand(1.2, 2.2),
       alpha: 1,
+      vx: drift,
+      pattern,
     });
+  }
+
+  function queuePattern() {
+    const patterns = ["solo", "double", "line", "zigzag", "rush"];
+    const pick = patterns[Math.floor(Math.random() * patterns.length)];
+
+    if (pick === "solo") {
+      spawnQueue.push({ delay: 0, pattern: "solo" });
+    }
+
+    if (pick === "double") {
+      spawnQueue.push({ delay: 0, pattern: "double" });
+      spawnQueue.push({ delay: 180, pattern: "double" });
+    }
+
+    if (pick === "line") {
+      for (let i = 0; i < 3; i += 1) {
+        spawnQueue.push({ delay: i * 160, pattern: "line" });
+      }
+    }
+
+    if (pick === "zigzag") {
+      for (let i = 0; i < 2; i += 1) {
+        spawnQueue.push({ delay: i * 220, pattern: "zigzag" });
+      }
+    }
+
+    if (pick === "rush") {
+      for (let i = 0; i < 5; i += 1) {
+        spawnQueue.push({ delay: i * 120, pattern: "rush" });
+      }
+    }
+  }
+
+  function processSpawnQueue(dt) {
+    for (let i = spawnQueue.length - 1; i >= 0; i -= 1) {
+      spawnQueue[i].delay -= dt;
+      if (spawnQueue[i].delay <= 0) {
+        spawnTarget(spawnQueue[i].pattern);
+        spawnQueue.splice(i, 1);
+      }
+    }
   }
 
   function removeTarget(idx, escaped) {
@@ -475,7 +592,8 @@
       const t = targets[i];
       const age = performance.now() - t.born;
       if (!t.hit) {
-        t.x += Math.sin((age / 400) + t.sway) * 0.2;
+        t.x += Math.sin((age / 400) + t.sway) * 0.2 + t.vx;
+        t.x = Math.max(60, Math.min(canvas.clientWidth - 60, t.x));
         if (age > t.life) {
           removeTarget(i, true);
         }
@@ -511,9 +629,10 @@
       state.spawnTimer += dt;
       if (state.spawnTimer > state.spawnInterval) {
         state.spawnTimer = 0;
-        spawnTarget();
+        queuePattern();
       }
 
+      processSpawnQueue(dt);
       updateTargets(dt);
       state.cooldown = Math.max(0, state.cooldown - dt);
     }
@@ -540,6 +659,7 @@
     state.levelHits = 0;
     targets.length = 0;
     bursts.length = 0;
+    spawnQueue.length = 0;
     updateHud();
     setOverlay("Finger Shooter", "Pulsa cualquier tecla para empezar", "SPACE tambien dispara");
     state.screen = "intro";
@@ -674,6 +794,7 @@
     handleStartAction();
   });
 
+  musicBtn.addEventListener("click", toggleMusic);
   resetBtn.addEventListener("click", resetGame);
   handBtn.addEventListener("click", async () => {
     if (state.usingHand) {
@@ -686,7 +807,9 @@
   window.addEventListener("resize", resize);
   resize();
   updateHud();
+  renderScores();
   setStatus("Modo raton activo");
+  musicBtn.textContent = "Music Off";
   resetGame();
   requestAnimationFrame((t) => {
     state.lastTime = t;

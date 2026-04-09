@@ -277,6 +277,17 @@ h1 {
   gap: 8px;
 }
 
+.scores {
+  list-style: decimal-leading-zero;
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--accent-3);
+  font-size: 12px;
+}
+
 .dot {
   width: 10px;
   height: 10px;
@@ -294,6 +305,14 @@ h1 {
 
 .dot.teal {
   background: #33d0b0;
+}
+
+.dot.violet {
+  background: #a167ff;
+}
+
+.dot.blue {
+  background: #3aa8ff;
 }
 
 @media (max-width: 980px) {
